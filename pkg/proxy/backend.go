@@ -72,10 +72,10 @@ func (bc *BackendConn) IsConnected() bool {
 }
 
 func (bc *BackendConn) PushBack(r *Request) {
-	if r.Batch != nil {
+	if r.Batch != nil { // 请求排队
 		r.Batch.Add(1)
 	}
-	bc.input <- r
+	bc.input <- r // 压入后端处理队列
 }
 
 func (bc *BackendConn) KeepAlive() bool {
@@ -243,7 +243,7 @@ func (bc *BackendConn) setResponse(r *Request, resp *redis.Resp, err error) erro
 	if r.Group != nil {
 		r.Group.Done()
 	}
-	if r.Batch != nil {
+	if r.Batch != nil { // 当前请求排队结束、获取处理权限
 		r.Batch.Done()
 	}
 	return err

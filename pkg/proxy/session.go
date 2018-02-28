@@ -113,6 +113,7 @@ var RespOK = redis.NewString([]byte("OK"))
 
 func (s *Session) Start(d *Router) {
 	s.start.Do(func() {
+		// 检查是否超过最大连接数限制
 		if int(incrSessions()) > s.config.ProxyMaxClients {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR max number of clients reached"), true)
@@ -124,6 +125,7 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
+		// 检查router是否在线
 		if !d.isOnline() {
 			go func() {
 				s.Conn.Encode(redis.NewErrorf("ERR router is not online"), true)
@@ -135,13 +137,16 @@ func (s *Session) Start(d *Router) {
 			return
 		}
 
+		// 创建请求处理管道，管道长度为1024
 		tasks := NewRequestChanBuffer(1024)
 
+		// 处理应答模块
 		go func() {
 			s.loopWriter(tasks)
 			decrSessions()
 		}()
 
+		// 处理请求模块
 		go func() {
 			s.loopReader(tasks, d)
 			tasks.Close()
@@ -160,12 +165,14 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 	)
 
 	for !s.quit {
+		// 解析redis请求报文
 		multi, err := s.Conn.DecodeMultiBulk()
 		if err != nil {
 			return err
 		}
 		s.incrOpTotal()
 
+		// 检查管道可用容量
 		if tasks.Buffered() > maxPipelineLen {
 			return s.incrOpFails(nil, ErrTooManyPipelinedRequests)
 		}
@@ -176,10 +183,11 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 
 		r := &Request{}
 		r.Multi = multi
-		r.Batch = &sync.WaitGroup{}
+		r.Batch = &sync.WaitGroup{} // 构建批次等待组，用于请求排队
 		r.Database = s.database
 		r.UnixNano = start.UnixNano()
 
+		// 处理请求
 		if err := s.handleRequest(r, d); err != nil {
 			r.Resp = redis.NewErrorf("ERR handle request, %s", err)
 			tasks.PushBack(r)
@@ -187,6 +195,7 @@ func (s *Session) loopReader(tasks *RequestChan, d *Router) (err error) {
 				return err
 			}
 		} else {
+			// 压入session请求-应答交互队列
 			tasks.PushBack(r)
 		}
 	}
@@ -211,7 +220,9 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 	p.MaxInterval = time.Millisecond
 	p.MaxBuffered = maxPipelineLen / 2
 
+	// 循环消费队列
 	return tasks.PopFrontAll(func(r *Request) error {
+		// 处理应答
 		resp, err := s.handleResponse(r)
 		if err != nil {
 			resp = redis.NewErrorf("ERR handle response, %s", err)
@@ -252,6 +263,7 @@ func (s *Session) handleResponse(r *Request) (*redis.Resp, error) {
 }
 
 func (s *Session) handleRequest(r *Request, d *Router) error {
+	// 获取具体命令
 	opstr, flag, err := getOpInfo(r.Multi)
 	if err != nil {
 		return err
@@ -271,6 +283,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 		return s.handleAuth(r)
 	}
 
+	// 检查会话是否已经授权
 	if !s.authorized {
 		if s.config.SessionAuth != "" {
 			r.Resp = redis.NewErrorf("NOAUTH Authentication required")
@@ -301,6 +314,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 	case "SLOTSMAPPING":
 		return s.handleRequestSlotsMapping(r, d)
 	default:
+		// 异步分发请求
 		return d.dispatch(r)
 	}
 }

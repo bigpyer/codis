@@ -404,6 +404,7 @@ func (s *Proxy) serveAdmin() {
 }
 
 func (s *Proxy) serveProxy() {
+	// 是否关闭
 	if s.IsClosed() {
 		return
 	}
@@ -411,6 +412,7 @@ func (s *Proxy) serveProxy() {
 
 	log.Warnf("[%p] proxy start service on %s", s, s.lproxy.Addr())
 
+	// 接收连接、创建会话、会话启动
 	eh := make(chan error, 1)
 	go func(l net.Listener) (err error) {
 		defer func() {
@@ -422,13 +424,15 @@ func (s *Proxy) serveProxy() {
 				return err
 			}
 			NewSession(c, s.config).Start(s.router)
-		}
+		} // for
 	}(s.lproxy)
 
+	// 后端实例存活检测
 	if d := s.config.BackendPingPeriod.Duration(); d != 0 {
 		go s.keepAlive(d)
 	}
 
+	// 守护服务模块goroutine
 	select {
 	case <-s.exit.C:
 		log.Warnf("[%p] proxy shutdown", s)

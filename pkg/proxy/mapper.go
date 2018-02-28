@@ -265,6 +265,7 @@ var (
 
 const MaxOpStrLen = 64
 
+// 获取具体命令
 func getOpInfo(multi []*redis.Resp) (string, OpFlag, error) {
 	if len(multi) < 1 {
 		return "", 0, ErrBadMultiBulk
