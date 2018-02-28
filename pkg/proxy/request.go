@@ -132,7 +132,7 @@ func (c *RequestChan) lockedPopFront() (*Request, bool) {
 		}
 		c.data = c.buff[:0]
 		c.waits++
-		c.cond.Wait()
+		c.cond.Wait() // TODO 不会造成死锁吗?
 		c.waits--
 	}
 	var r = c.data[0]
