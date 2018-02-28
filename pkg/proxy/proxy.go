@@ -29,7 +29,7 @@ import (
 type Proxy struct {
 	mu sync.Mutex
 
-	xauth string
+	xauth string // 模块rpc调用auth
 	model *models.Proxy
 
 	exit struct {
@@ -68,6 +68,7 @@ func New(config *Config) (*Proxy, error) {
 	s := &Proxy{}
 	s.config = config
 	s.exit.C = make(chan struct{})
+	// 创建路由模块
 	s.router = NewRouter(config)
 	s.ignore = make([]byte, config.ProxyHeapPlaceholder.Int64())
 
@@ -85,6 +86,7 @@ func New(config *Config) (*Proxy, error) {
 	}
 	s.model.Hostname = utils.Hostname
 
+	// 启动准备
 	if err := s.setup(config); err != nil {
 		s.Close()
 		return nil, err
@@ -94,9 +96,12 @@ func New(config *Config) (*Proxy, error) {
 
 	unsafe2.SetMaxOffheapBytes(config.ProxyMaxOffheapBytes.Int64())
 
+	// 启动管理模块
 	go s.serveAdmin()
+	// 启动对外服务模块
 	go s.serveProxy()
 
+	// 状态上报
 	s.startMetricsJson()
 	s.startMetricsInfluxdb()
 	s.startMetricsStatsd()
@@ -105,6 +110,7 @@ func New(config *Config) (*Proxy, error) {
 }
 
 func (s *Proxy) setup(config *Config) error {
+	// 网络监听、过滤
 	proto := config.ProtoType
 	if l, err := net.Listen(proto, config.ProxyAddr); err != nil {
 		return errors.Trace(err)
@@ -132,6 +138,7 @@ func (s *Proxy) setup(config *Config) error {
 		s.model.AdminAddr = x
 	}
 
+	// 生成proxy token、rpc auth
 	s.model.Token = rpc.NewToken(
 		config.ProductName,
 		s.lproxy.Addr().String(),
@@ -143,6 +150,7 @@ func (s *Proxy) setup(config *Config) error {
 		s.model.Token,
 	)
 
+	// jodis服务注册
 	if config.JodisAddr != "" {
 		c, err := models.NewClient(config.JodisName, config.JodisAddr, config.JodisAuth, config.JodisTimeout.Duration())
 		if err != nil {
