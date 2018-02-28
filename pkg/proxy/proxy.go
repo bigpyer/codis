@@ -56,9 +56,11 @@ type Proxy struct {
 var ErrClosedProxy = errors.New("use of closed proxy")
 
 func New(config *Config) (*Proxy, error) {
+	// 检查配置
 	if err := config.Validate(); err != nil {
 		return nil, errors.Trace(err)
 	}
+	// 检查集群名称
 	if err := models.ValidateProduct(config.ProductName); err != nil {
 		return nil, errors.Trace(err)
 	}

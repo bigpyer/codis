@@ -43,6 +43,7 @@ Options:
 	--ulimit=NLIMIT             run 'ulimit -n' to check the maximum number of open file descriptors.
 `
 
+	// 解析入口参数
 	d, err := docopt.Parse(usage, nil, true, "", false)
 	if err != nil {
 		log.PanicError(err, "parse arguments failed")
@@ -77,6 +78,7 @@ Options:
 		}
 	}
 
+	// 检查、修改系统资源配置
 	if n, ok := utils.ArgumentInteger(d, "--ulimit"); ok {
 		b, err := exec.Command("/bin/sh", "-c", "ulimit -n").Output()
 		if err != nil {
@@ -87,6 +89,7 @@ Options:
 		}
 	}
 
+	// 计算CPU核数
 	var ncpu int
 	if n, ok := utils.ArgumentInteger(d, "--ncpu"); ok {
 		ncpu = n
@@ -107,6 +110,7 @@ Options:
 		go AutoGOMAXPROCS(ncpu, maxncpu)
 	}
 
+	// 初始化全局基础配置,如果没有指定配置文件，采用默认配置
 	config := proxy.NewDefaultConfig()
 	if s, ok := utils.Argument(d, "--config"); ok {
 		if err := config.LoadFromFile(s); err != nil {
@@ -135,7 +139,7 @@ Options:
 	}
 
 	switch {
-
+	// 选择coordinator类型、地址
 	case d["--zookeeper"] != nil:
 		coordinator.name = "zookeeper"
 		coordinator.addr = utils.ArgumentMust(d, "--zookeeper")
@@ -160,6 +164,7 @@ Options:
 		log.Warnf("option --%s = %s", coordinator.name, coordinator.addr)
 	}
 
+	// 如果指定fillsslots参数，根据对应json数据初始化槽配置
 	var slots []*models.Slot
 	if s, ok := utils.Argument(d, "--fillslots"); ok {
 		b, err := ioutil.ReadFile(s)
@@ -184,6 +189,7 @@ Options:
 		log.Warnf("option --session_auth = %s", s)
 	}
 
+	// 主服务、管理服务入口
 	s, err := proxy.New(config)
 	if err != nil {
 		log.PanicErrorf(err, "create proxy with config file failed\n%s", config)
@@ -192,6 +198,7 @@ Options:
 
 	log.Warnf("create proxy with config\n%s", config)
 
+	// 进程ID文件
 	if s, ok := utils.Argument(d, "--pidfile"); ok {
 		if pidfile, err := filepath.Abs(s); err != nil {
 			log.WarnErrorf(err, "parse pidfile = '%s' failed", s)
@@ -207,6 +214,7 @@ Options:
 		}
 	}
 
+	// 信号处理: 捕获信号、打印日志、关闭服务
 	go func() {
 		defer s.Close()
 		c := make(chan os.Signal, 1)
@@ -218,13 +226,17 @@ Options:
 
 	switch {
 	case dashboard != "":
+		// 通过dashboard自动上线Proxy，正式对外服务
 		go AutoOnlineWithDashboard(s, dashboard)
 	case coordinator.name != "":
+		// 通过注册中心自动上线Proxy，正式对外服务
 		go AutoOnlineWithCoordinator(s, coordinator.name, coordinator.addr, coordinator.auth)
 	case slots != nil:
+		// 通过slots配置自动上线Proxy，正式对外服务
 		go AutoOnlineWithFillSlots(s, slots)
 	}
 
+	// 如果服务已经启动但是没有上线，打印警告日志
 	for !s.IsClosed() && !s.IsOnline() {
 		log.Warnf("[%p] proxy waiting online ...", s)
 		time.Sleep(time.Second)
@@ -232,6 +244,7 @@ Options:
 
 	log.Warnf("[%p] proxy is working ...", s)
 
+	// 进程守护
 	for !s.IsClosed() {
 		time.Sleep(time.Second)
 	}
