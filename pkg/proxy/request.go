@@ -132,7 +132,7 @@ func (c *RequestChan) lockedPopFront() (*Request, bool) {
 		}
 		c.data = c.buff[:0]
 		c.waits++
-		c.cond.Wait() // TODO 不会造成死锁吗?
+		c.cond.Wait() // 内部首先释放锁，然后阻塞在runtime_notifyListWait()，收到通知后再获取锁
 		c.waits--
 	}
 	var r = c.data[0]
@@ -144,6 +144,7 @@ func (c *RequestChan) IsEmpty() bool {
 	return c.Buffered() == 0
 }
 
+// 循环消费队列，应答客户端请求
 func (c *RequestChan) PopFrontAll(onRequest func(r *Request) error) error {
 	for {
 		r, ok := c.PopFront()

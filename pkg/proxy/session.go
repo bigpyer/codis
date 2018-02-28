@@ -231,16 +231,20 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 				return s.incrOpFails(r, err)
 			}
 		}
+		// 编码应答信息
 		if err := p.Encode(resp); err != nil {
 			return s.incrOpFails(r, err)
 		}
 		fflush := tasks.IsEmpty()
+		// 写网络应答
 		if err := p.Flush(fflush); err != nil {
 			return s.incrOpFails(r, err)
 		} else {
+			// op统计
 			s.incrOpStats(r, resp.Type)
 		}
 		if fflush {
+			// flush统计
 			s.flushOpStats(false)
 		}
 		return nil
@@ -248,6 +252,7 @@ func (s *Session) loopWriter(tasks *RequestChan) (err error) {
 }
 
 func (s *Session) handleResponse(r *Request) (*redis.Resp, error) {
+	// 排队中，等待当前请求得到处理
 	r.Batch.Wait()
 	if r.Coalesce != nil {
 		if err := r.Coalesce(); err != nil {
