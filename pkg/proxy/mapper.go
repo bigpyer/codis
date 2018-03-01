@@ -291,6 +291,7 @@ func getOpInfo(multi []*redis.Resp) (string, OpFlag, error) {
 	return string(op), FlagMayWrite, nil
 }
 
+// 支持hash tag
 func Hash(key []byte) uint32 {
 	const (
 		TagBeg = '{'
@@ -304,6 +305,7 @@ func Hash(key []byte) uint32 {
 	return crc32.ChecksumIEEE(key)
 }
 
+// 获取hash key
 func getHashKey(multi []*redis.Resp, opstr string) []byte {
 	var index = 1
 	switch opstr {

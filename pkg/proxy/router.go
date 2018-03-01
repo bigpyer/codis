@@ -29,6 +29,7 @@ type Router struct {
 	closed bool
 }
 
+// 构建router并初始化
 func NewRouter(config *Config) *Router {
 	s := &Router{config: config}
 	s.pool.primary = newSharedBackendConnPool(config, config.BackendPrimaryParallel)
@@ -82,6 +83,7 @@ func (s *Router) GetSlot(id int) *models.Slot {
 	return slot.snapshot()
 }
 
+// 是否切换主从
 func (s *Router) HasSwitched() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -99,6 +101,7 @@ var (
 	ErrInvalidMethod = errors.New("use of invalid forwarder method")
 )
 
+// 填充单个Slot
 func (s *Router) FillSlot(m *models.Slot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,6 +149,7 @@ func (s *Router) dispatch(r *Request) error {
 	return slot.forward(r, hkey)
 }
 
+// 按照slot分发请求
 func (s *Router) dispatchSlot(r *Request, id int) error {
 	if id < 0 || id >= MaxSlotNum {
 		return ErrInvalidSlotId
@@ -154,6 +158,7 @@ func (s *Router) dispatchSlot(r *Request, id int) error {
 	return slot.forward(r, nil)
 }
 
+// 按照地址分发请求
 func (s *Router) dispatchAddr(r *Request, addr string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -170,6 +175,7 @@ func (s *Router) dispatchAddr(r *Request, addr string) bool {
 
 func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	slot := &s.slots[m.Id]
+	// 如果当前slot正在进行迁移，等到迁移指令、请求处理完成后再填充
 	slot.blockAndWait()
 
 	slot.backend.bc.Release()
@@ -235,6 +241,7 @@ func (s *Router) fillSlot(m *models.Slot, switched bool, method forwardMethod) {
 	}
 }
 
+// 切主
 func (s *Router) SwitchMasters(masters map[int]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

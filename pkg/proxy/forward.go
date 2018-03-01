@@ -24,6 +24,7 @@ var (
 	ErrRespIsRequired = errors.New("resp is required")
 )
 
+// 同步迁移实现
 type forwardSync struct {
 	forwardHelper
 }
@@ -34,21 +35,26 @@ func (d *forwardSync) GetId() int {
 
 func (d *forwardSync) Forward(s *Slot, r *Request, hkey []byte) error {
 	s.lock.RLock()
+	// 请求预处理
 	bc, err := d.process(s, r, hkey)
 	s.lock.RUnlock()
 	if err != nil {
 		return err
 	}
+	// 压入后端连接对应队列
 	bc.PushBack(r)
 	return nil
 }
 
+// 请求预处理
 func (d *forwardSync) process(s *Slot, r *Request, hkey []byte) (*BackendConn, error) {
+	// 检测slot对应后端实例
 	if s.backend.bc == nil {
 		log.Debugf("slot-%04d is not ready: hash key = '%s'",
 			s.id, hkey)
 		return nil, ErrSlotIsNotReady
 	}
+	// 是否需要同步迁移
 	if s.migrate.bc != nil && len(hkey) != 0 {
 		if err := d.slotsmgrt(s, hkey, r.Database, r.Seed16()); err != nil {
 			log.Debugf("slot-%04d migrate from = %s to %s failed: hash key = '%s', database = %d, error = %s",
@@ -58,9 +64,11 @@ func (d *forwardSync) process(s *Slot, r *Request, hkey []byte) (*BackendConn, e
 	}
 	r.Group = &s.refs
 	r.Group.Add(1)
+	// 再次选择后端实例
 	return d.forward2(s, r), nil
 }
 
+// 异步迁移实现
 type forwardSemiAsync struct {
 	forwardHelper
 }
@@ -73,15 +81,16 @@ func (d *forwardSemiAsync) Forward(s *Slot, r *Request, hkey []byte) error {
 	var loop int
 	for {
 		s.lock.RLock()
+		// 请求预处理
 		bc, retry, err := d.process(s, r, hkey)
 		s.lock.RUnlock()
 
 		switch {
 		case err != nil:
 			return err
-		case !retry:
+		case !retry: // 不需要重试
 			if bc != nil {
-				bc.PushBack(r)
+				bc.PushBack(r) // 压入后端连接对应队列，处理请求
 			}
 			return nil
 		}
@@ -104,12 +113,15 @@ func (d *forwardSemiAsync) Forward(s *Slot, r *Request, hkey []byte) error {
 	}
 }
 
+// 异步迁移预处理
 func (d *forwardSemiAsync) process(s *Slot, r *Request, hkey []byte) (_ *BackendConn, retry bool, _ error) {
+	// 检查后端实例
 	if s.backend.bc == nil {
 		log.Debugf("slot-%04d is not ready: hash key = '%s'",
 			s.id, hkey)
 		return nil, false, ErrSlotIsNotReady
 	}
+	// 是否需要迁移
 	if s.migrate.bc != nil && len(hkey) != 0 {
 		resp, moved, err := d.slotsmgrtExecWrapper(s, hkey, r.Database, r.Seed16(), r.Multi)
 		switch {
@@ -134,6 +146,7 @@ func (d *forwardSemiAsync) process(s *Slot, r *Request, hkey []byte) (_ *Backend
 type forwardHelper struct {
 }
 
+// 主动进行一次同步迁移
 func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int32, seed uint) error {
 	m := &Request{}
 	m.Multi = []*redis.Resp{
@@ -145,8 +158,10 @@ func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int32, seed uin
 	}
 	m.Batch = &sync.WaitGroup{}
 
+	// 压入后端实例队列，进行处理
 	s.migrate.bc.BackendConn(database, seed, true).PushBack(m)
 
+	// 等待请求处理完成
 	m.Batch.Wait()
 
 	if err := m.Err; err != nil {
@@ -166,6 +181,7 @@ func (d *forwardHelper) slotsmgrt(s *Slot, hkey []byte, database int32, seed uin
 	}
 }
 
+// 进行一次异步迁移
 func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int32, seed uint, multi []*redis.Resp) (_ *redis.Resp, moved bool, _ error) {
 	m := &Request{}
 	m.Multi = make([]*redis.Resp, 0, 2+len(multi))
@@ -176,8 +192,10 @@ func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int3
 	m.Multi = append(m.Multi, multi...)
 	m.Batch = &sync.WaitGroup{}
 
+	// 压入后端实例队列，进行处理
 	s.migrate.bc.BackendConn(database, seed, true).PushBack(m)
 
+	// 等待请求处理完成
 	m.Batch.Wait()
 
 	if err := m.Err; err != nil {
@@ -213,8 +231,10 @@ func (d *forwardHelper) slotsmgrtExecWrapper(s *Slot, hkey []byte, database int3
 	}
 }
 
+// 重新选择后端实例
 func (d *forwardHelper) forward2(s *Slot, r *Request) *BackendConn {
 	var database, seed = r.Database, r.Seed16()
+	// 不需要迁移 && 非Master Only && 从非空
 	if s.migrate.bc == nil && !r.IsMasterOnly() && len(s.replicaGroups) != 0 {
 		for _, group := range s.replicaGroups {
 			var i = seed
