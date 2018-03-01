@@ -283,9 +283,9 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 
 	switch opstr {
 	case "QUIT":
-		return s.handleQuit(r)
+		return s.handleQuit(r) // 同步处理quit
 	case "AUTH":
-		return s.handleAuth(r)
+		return s.handleAuth(r) // 同步处理授权检查
 	}
 
 	// 检查会话是否已经授权
@@ -299,7 +299,7 @@ func (s *Session) handleRequest(r *Request, d *Router) error {
 
 	switch opstr {
 	case "SELECT":
-		return s.handleSelect(r)
+		return s.handleSelect(r) // 同步select db
 	case "PING":
 		return s.handleRequestPing(r, d)
 	case "INFO":
@@ -384,6 +384,8 @@ func (s *Session) handleRequestPing(r *Request, d *Router) error {
 	return nil
 }
 
+// 当分片多于1时，任选一个分片分发、执行info命令
+// 当只有一个分片时，根据地址分发、执行info命令
 func (s *Session) handleRequestInfo(r *Request, d *Router) error {
 	var addr string
 	var nblks = len(r.Multi) - 1
@@ -564,6 +566,7 @@ func (s *Session) handleRequestExists(r *Request, d *Router) error {
 	return nil
 }
 
+// 支持一个分片的slotsinfo命令
 func (s *Session) handleRequestSlotsInfo(r *Request, d *Router) error {
 	var addr string
 	var nblks = len(r.Multi) - 1
@@ -583,6 +586,7 @@ func (s *Session) handleRequestSlotsInfo(r *Request, d *Router) error {
 	return nil
 }
 
+// 透传slotsscan命令
 func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
 	switch {
@@ -602,6 +606,7 @@ func (s *Session) handleRequestSlotsScan(r *Request, d *Router) error {
 	}
 }
 
+// 获取当前group-slots映射关系
 func (s *Session) handleRequestSlotsMapping(r *Request, d *Router) error {
 	var nblks = len(r.Multi) - 1
 	switch {

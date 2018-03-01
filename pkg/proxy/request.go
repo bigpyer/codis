@@ -34,6 +34,7 @@ func (r *Request) IsBroken() bool {
 	return r.Broken != nil && r.Broken.IsTrue()
 }
 
+// 构造M*命令后端请求报文
 func (r *Request) MakeSubRequest(n int) []Request {
 	var sub = make([]Request, n)
 	for i := range sub {
