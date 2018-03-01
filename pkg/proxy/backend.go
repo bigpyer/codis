@@ -41,16 +41,19 @@ type BackendConn struct {
 	database int
 }
 
+// 根据地址、db、config创建具体的连接，对应一个网络连接
 func NewBackendConn(addr string, database int, config *Config) *BackendConn {
 	bc := &BackendConn{
 		addr: addr, config: config, database: database,
 	}
+	// 创建与router交互的管道
 	bc.input = make(chan *Request, 1024)
 	bc.retry.delay = &DelayExp2{
 		Min: 50, Max: 5000,
 		Unit: time.Millisecond,
 	}
 
+	// 启动读、写处理goroutine
 	go bc.run()
 
 	return bc
@@ -78,6 +81,7 @@ func (bc *BackendConn) PushBack(r *Request) {
 	bc.input <- r // 压入后端处理队列
 }
 
+// 后端存活检测
 func (bc *BackendConn) KeepAlive() bool {
 	if len(bc.input) != 0 {
 		return false
@@ -154,6 +158,7 @@ func init() {
 	}()
 }
 
+// 应答处理
 func (bc *BackendConn) newBackendReader(round int, config *Config) (*redis.Conn, chan<- *Request, error) {
 	c, err := redis.DialTimeout(bc.addr, time.Second*5,
 		config.BackendRecvBufsize.AsInt(),
@@ -165,21 +170,25 @@ func (bc *BackendConn) newBackendReader(round int, config *Config) (*redis.Conn,
 	c.WriterTimeout = config.BackendSendTimeout.Duration()
 	c.SetKeepAlivePeriod(config.BackendKeepAlivePeriod.Duration())
 
+	// 授权
 	if err := bc.verifyAuth(c, config.ProductAuth); err != nil {
 		c.Close()
 		return nil, nil, err
 	}
+	// 选择DB
 	if err := bc.selectDatabase(c, bc.database); err != nil {
 		c.Close()
 		return nil, nil, err
 	}
 
 	tasks := make(chan *Request, config.BackendMaxPipeline)
+	// 处理后端redis应答
 	go bc.loopReader(tasks, c, round)
 
 	return c, tasks, nil
 }
 
+// 授权验证
 func (bc *BackendConn) verifyAuth(c *redis.Conn, auth string) error {
 	if auth == "" {
 		return nil
@@ -209,6 +218,7 @@ func (bc *BackendConn) verifyAuth(c *redis.Conn, auth string) error {
 	}
 }
 
+// select db
 func (bc *BackendConn) selectDatabase(c *redis.Conn, database int) error {
 	if database == 0 {
 		return nil
@@ -238,6 +248,7 @@ func (bc *BackendConn) selectDatabase(c *redis.Conn, database int) error {
 	}
 }
 
+// 设置应答数据、状态
 func (bc *BackendConn) setResponse(r *Request, resp *redis.Resp, err error) error {
 	r.Resp, r.Err = resp, err
 	if r.Group != nil {
@@ -254,6 +265,7 @@ var (
 	ErrRequestIsBroken  = errors.New("request is broken")
 )
 
+// 处理请求、返回结果
 func (bc *BackendConn) run() {
 	log.Warnf("backend conn [%p] to %s, db-%d start service",
 		bc, bc.addr, bc.database)
@@ -261,6 +273,7 @@ func (bc *BackendConn) run() {
 		log.Warnf("backend conn [%p] to %s, db-%d round-[%d]",
 			bc, bc.addr, bc.database, round)
 		if err := bc.loopWriter(round); err != nil {
+			// 延迟重试
 			bc.delayBeforeRetry()
 		}
 	}
@@ -273,6 +286,7 @@ var (
 	errRespLoading    = []byte("LOADING")
 )
 
+// 处理后端redis的应答、返回结果
 func (bc *BackendConn) loopReader(tasks <-chan *Request, c *redis.Conn, round int) (err error) {
 	defer func() {
 		c.Close()
@@ -283,6 +297,7 @@ func (bc *BackendConn) loopReader(tasks <-chan *Request, c *redis.Conn, round in
 			bc, bc.addr, bc.database, round)
 	}()
 	for r := range tasks {
+		// 等待后端redis应答、解析应答数据
 		resp, err := c.Decode()
 		if err != nil {
 			return bc.setResponse(r, nil, fmt.Errorf("backend conn failure, %s", err))
@@ -301,11 +316,13 @@ func (bc *BackendConn) loopReader(tasks <-chan *Request, c *redis.Conn, round in
 				}
 			}
 		}
+		// 设置应答数据、状态
 		bc.setResponse(r, resp, nil)
 	}
 	return nil
 }
 
+// 延迟重试
 func (bc *BackendConn) delayBeforeRetry() {
 	bc.retry.fails += 1
 	if bc.retry.fails <= 10 {
@@ -325,6 +342,8 @@ func (bc *BackendConn) delayBeforeRetry() {
 	}
 }
 
+// 处理router push的请求并发送到后端redis
+// reader、writer使用同一个网络连接，发送请求、接收应答的顺序依赖于network socket
 func (bc *BackendConn) loopWriter(round int) (err error) {
 	defer func() {
 		for i := len(bc.input); i != 0; i-- {
@@ -334,6 +353,7 @@ func (bc *BackendConn) loopWriter(round int) (err error) {
 		log.WarnErrorf(err, "backend conn [%p] to %s, db-%d writer-[%d] exit",
 			bc, bc.addr, bc.database, round)
 	}()
+	// 创建应答处理goroutine
 	c, tasks, err := bc.newBackendReader(round, bc.config)
 	if err != nil {
 		return err
@@ -350,17 +370,20 @@ func (bc *BackendConn) loopWriter(round int) (err error) {
 	p.MaxInterval = time.Millisecond
 	p.MaxBuffered = cap(tasks) / 2
 
+	// 阻塞、循环接收请求
 	for r := range bc.input {
 		if r.IsReadOnly() && r.IsBroken() {
 			bc.setResponse(r, nil, ErrRequestIsBroken)
 			continue
 		}
+		// 转发请求到后端redis
 		if err := p.EncodeMultiBulk(r.Multi); err != nil {
 			return bc.setResponse(r, nil, fmt.Errorf("backend conn failure, %s", err))
 		}
 		if err := p.Flush(len(bc.input) == 0); err != nil {
 			return bc.setResponse(r, nil, fmt.Errorf("backend conn failure, %s", err))
 		} else {
+			// 压入应答处理队列
 			tasks <- r
 		}
 	}
@@ -380,6 +403,7 @@ type sharedBackendConn struct {
 	refcnt int
 }
 
+// 根据db数量、每个db连接数量，新建共享连接
 func newSharedBackendConn(addr string, pool *sharedBackendConnPool) *sharedBackendConn {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -393,7 +417,7 @@ func newSharedBackendConn(addr string, pool *sharedBackendConnPool) *sharedBacke
 	s.conns = make([][]*BackendConn, pool.config.BackendNumberDatabases)
 	for database := range s.conns {
 		parallel := make([]*BackendConn, pool.parallel)
-		for i := range parallel {
+		for i := range parallel { // 根据地址、db、config创建具体的连接，对应一个网络连接
 			parallel[i] = NewBackendConn(addr, database, pool.config)
 		}
 		s.conns[database] = parallel
@@ -415,6 +439,7 @@ func (s *sharedBackendConn) Addr() string {
 	return s.addr
 }
 
+// 释放连接，减少计数
 func (s *sharedBackendConn) Release() {
 	if s == nil {
 		return
@@ -435,13 +460,14 @@ func (s *sharedBackendConn) Release() {
 	delete(s.owner.pool, s.addr)
 }
 
+// 使用共享连接，增加计数
 func (s *sharedBackendConn) Retain() *sharedBackendConn {
 	if s == nil {
 		return nil
 	}
 	if s.refcnt <= 0 {
 		log.Panicf("shared backend conn has been closed")
-	} else {
+	} else { // 增加连接计数
 		s.refcnt++
 	}
 	return s
@@ -493,6 +519,7 @@ type sharedBackendConnPool struct {
 	pool map[string]*sharedBackendConn
 }
 
+// 构建连接池
 func newSharedBackendConnPool(config *Config, parallel int) *sharedBackendConnPool {
 	p := &sharedBackendConnPool{
 		config: config, parallel: math2.MaxInt(1, parallel),
@@ -507,14 +534,18 @@ func (p *sharedBackendConnPool) KeepAlive() {
 	}
 }
 
+// 根据地址获取后端共享连接
 func (p *sharedBackendConnPool) Get(addr string) *sharedBackendConn {
 	return p.pool[addr]
 }
 
+// 初始化后端共享连接
 func (p *sharedBackendConnPool) Retain(addr string) *sharedBackendConn {
+	// 当前连接已经初始化，应用该连接
 	if bc := p.pool[addr]; bc != nil {
 		return bc.Retain()
 	} else {
+		// 首次初始化共享连接
 		bc = newSharedBackendConn(addr, p)
 		p.pool[addr] = bc
 		return bc

@@ -32,7 +32,9 @@ type Router struct {
 // 构建router并初始化
 func NewRouter(config *Config) *Router {
 	s := &Router{config: config}
+	// 构建主连接池
 	s.pool.primary = newSharedBackendConnPool(config, config.BackendPrimaryParallel)
+	// 构建从连接池
 	s.pool.replica = newSharedBackendConnPool(config, config.BackendReplicaParallel)
 	for i := range s.slots {
 		s.slots[i].id = i
