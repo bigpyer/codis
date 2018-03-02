@@ -30,6 +30,7 @@ const (
 	MaxArrayLen     = 1024 * 1024
 )
 
+// byte to int64
 func Btoi64(b []byte) (int64, error) {
 	if len(b) != 0 && len(b) < 10 {
 		var neg, i = false, 0
@@ -69,6 +70,7 @@ type Decoder struct {
 
 var ErrFailedDecoder = errors.New("use of failed decoder")
 
+// 构造解码器
 func NewDecoder(r io.Reader) *Decoder {
 	return NewDecoderBuffer(bufio2.NewReaderSize(r, 8192))
 }
@@ -81,6 +83,7 @@ func NewDecoderBuffer(br *bufio2.Reader) *Decoder {
 	return &Decoder{br: br}
 }
 
+// 解析请求、应答数据
 func (d *Decoder) Decode() (*Resp, error) {
 	if d.Err != nil {
 		return nil, errors.Trace(ErrFailedDecoder)
@@ -115,6 +118,13 @@ func DecodeMultiBulkFromBytes(p []byte) ([]*Resp, error) {
 	return NewDecoder(bytes.NewReader(p)).DecodeMultiBulk()
 }
 
+// 解析请求、应答数据
+// @请求数据格式统一为: "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n"
+// @单行回复(状态回复): "+OK\r\n"
+// @错误回复: "-ERR unknown command 'foobar'\r\n"
+// @整型恢复: ":1\r\n"
+// @批量回复: "$6\r\nfoobar\r\n"
+// @多个批量回复(同请求数据格式): "*4\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$5\r\nhello\r\n$5\r\nWorld\r\n"
 func (d *Decoder) decodeResp() (*Resp, error) {
 	b, err := d.br.ReadByte()
 	if err != nil {
@@ -226,6 +236,7 @@ func (d *Decoder) decodeSingleLineMultiBulk() ([]*Resp, error) {
 	return multi, nil
 }
 
+// 解析多个批量报文，作为对外函数单独使用
 func (d *Decoder) decodeMultiBulk() ([]*Resp, error) {
 	b, err := d.br.PeekByte()
 	if err != nil {

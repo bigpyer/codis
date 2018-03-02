@@ -43,6 +43,7 @@ func itoa(i int64) string {
 	return strconv.FormatInt(i, 10)
 }
 
+// 编码器实现
 type Encoder struct {
 	bw *bufio2.Writer
 
@@ -109,6 +110,7 @@ func EncodeToBytes(r *Resp) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// 编码格式
 func (e *Encoder) encodeResp(r *Resp) error {
 	if err := e.bw.WriteByte(byte(r.Type)); err != nil {
 		return errors.Trace(err)
@@ -167,6 +169,7 @@ func (e *Encoder) encodeBulkBytes(b []byte) error {
 	}
 }
 
+// 构造统一请求、多个批量回复数据格式
 func (e *Encoder) encodeArray(array []*Resp) error {
 	if array == nil {
 		return e.encodeInt(-1)

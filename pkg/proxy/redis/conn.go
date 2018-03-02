@@ -25,6 +25,7 @@ type Conn struct {
 }
 
 func DialTimeout(addr string, timeout time.Duration, rbuf, wbuf int) (*Conn, error) {
+	// 创建网络套接字
 	c, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -34,23 +35,29 @@ func DialTimeout(addr string, timeout time.Duration, rbuf, wbuf int) (*Conn, err
 
 func NewConn(sock net.Conn, rbuf, wbuf int) *Conn {
 	conn := &Conn{Sock: sock}
+	// 解码器，读取conn上的请求、解析请求|读取conn上的应答、解析应答
 	conn.Decoder = newConnDecoder(conn, rbuf)
+	// 编码器，构造redis协议格式数据，发送请求|应答
 	conn.Encoder = newConnEncoder(conn, wbuf)
 	return conn
 }
 
+// 本地地址
 func (c *Conn) LocalAddr() string {
 	return c.Sock.LocalAddr().String()
 }
 
+// 客户端地址
 func (c *Conn) RemoteAddr() string {
 	return c.Sock.RemoteAddr().String()
 }
 
+// 关闭连接
 func (c *Conn) Close() error {
 	return c.Sock.Close()
 }
 
+// 关闭解码器
 func (c *Conn) CloseReader() error {
 	if t, ok := c.Sock.(*net.TCPConn); ok {
 		return t.CloseRead()
@@ -58,6 +65,7 @@ func (c *Conn) CloseReader() error {
 	return c.Close()
 }
 
+// 套接字层面存活检测
 func (c *Conn) SetKeepAlivePeriod(d time.Duration) error {
 	if t, ok := c.Sock.(*net.TCPConn); ok {
 		if err := t.SetKeepAlive(d != 0); err != nil {
@@ -72,6 +80,7 @@ func (c *Conn) SetKeepAlivePeriod(d time.Duration) error {
 	return nil
 }
 
+// 刷新数据到操作系统
 func (c *Conn) FlushEncoder() *FlushEncoder {
 	return &FlushEncoder{Conn: c}
 }
@@ -83,12 +92,15 @@ type connReader struct {
 	hasDeadline bool
 }
 
+// 构造解码器
 func newConnDecoder(conn *Conn, bufsize int) *Decoder {
 	r := &connReader{Conn: conn}
+	// 通过cgo分配、回收内存，减轻GC压力
 	r.Slice = unsafe2.MakeSlice(bufsize)
 	return NewDecoderBuffer(bufio2.NewReaderBuffer(r, r.Buffer()))
 }
 
+// 包装网络套接字，实现io.Reader接口
 func (r *connReader) Read(b []byte) (int, error) {
 	if timeout := r.ReaderTimeout; timeout != 0 {
 		if err := r.Sock.SetReadDeadline(time.Now().Add(timeout)); err != nil {
@@ -115,12 +127,14 @@ type connWriter struct {
 	hasDeadline bool
 }
 
+// 构造编码器
 func newConnEncoder(conn *Conn, bufsize int) *Encoder {
 	w := &connWriter{Conn: conn}
 	w.Slice = unsafe2.MakeSlice(bufsize)
 	return NewEncoderBuffer(bufio2.NewWriterBuffer(w, w.Buffer()))
 }
 
+// 包装网络套接字，实现io.Writer接口
 func (w *connWriter) Write(b []byte) (int, error) {
 	if timeout := w.WriterTimeout; timeout != 0 {
 		if err := w.Sock.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
@@ -141,6 +155,7 @@ func (w *connWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// 判断是否超时错误
 func IsTimeout(err error) bool {
 	if err := errors.Cause(err); err != nil {
 		e, ok := err.(*net.OpError)
@@ -151,6 +166,7 @@ func IsTimeout(err error) bool {
 	return false
 }
 
+// 数据冲洗实现，控制冲洗频率
 type FlushEncoder struct {
 	Conn *Conn
 
@@ -160,6 +176,7 @@ type FlushEncoder struct {
 	nbuffered int
 }
 
+// 是否满足冲洗条件
 func (p *FlushEncoder) NeedFlush() bool {
 	if p.nbuffered != 0 {
 		if p.MaxBuffered < p.nbuffered {
