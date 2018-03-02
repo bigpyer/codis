@@ -1,5 +1,6 @@
 // Copyright 2016 CodisLabs. All Rights Reserved.
 // Licensed under the MIT (MIT-LICENSE.txt) license.
+// bufio2相对原生bufio可以减少内存碎片
 
 package bufio2
 
@@ -22,10 +23,12 @@ type Reader struct {
 	slice sliceAlloc
 }
 
+// 根据默认size分配、构造读缓冲区
 func NewReader(rd io.Reader) *Reader {
 	return NewReaderSize(rd, DefaultBufferSize)
 }
 
+// 根据size分配、构造读缓冲区
 func NewReaderSize(rd io.Reader, size int) *Reader {
 	if size <= 0 {
 		size = DefaultBufferSize
@@ -33,6 +36,7 @@ func NewReaderSize(rd io.Reader, size int) *Reader {
 	return &Reader{rd: rd, buf: make([]byte, size)}
 }
 
+// 根据已经分配的buffer，构造读缓冲区
 func NewReaderBuffer(rd io.Reader, buf []byte) *Reader {
 	if len(buf) == 0 {
 		buf = make([]byte, DefaultBufferSize)
@@ -180,10 +184,12 @@ type Writer struct {
 	wpos int
 }
 
+// 根据默认size分配、构造写缓冲区
 func NewWriter(wr io.Writer) *Writer {
 	return NewWriterSize(wr, DefaultBufferSize)
 }
 
+// 根据size分配、构造写缓冲区
 func NewWriterSize(wr io.Writer, size int) *Writer {
 	if size <= 0 {
 		size = DefaultBufferSize
@@ -191,6 +197,7 @@ func NewWriterSize(wr io.Writer, size int) *Writer {
 	return &Writer{wr: wr, buf: make([]byte, size)}
 }
 
+// 根据已经分配的buffer，构造写缓冲区
 func NewWriterBuffer(wr io.Writer, buf []byte) *Writer {
 	if len(buf) == 0 {
 		buf = make([]byte, DefaultBufferSize)
