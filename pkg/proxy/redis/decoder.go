@@ -83,7 +83,7 @@ func NewDecoderBuffer(br *bufio2.Reader) *Decoder {
 	return &Decoder{br: br}
 }
 
-// 解析请求、应答数据
+// 解析后端redis应答数据,backend调用
 func (d *Decoder) Decode() (*Resp, error) {
 	if d.Err != nil {
 		return nil, errors.Trace(ErrFailedDecoder)
@@ -95,6 +95,7 @@ func (d *Decoder) Decode() (*Resp, error) {
 	return r, d.Err
 }
 
+// 解析请求数据，session调用
 func (d *Decoder) DecodeMultiBulk() ([]*Resp, error) {
 	if d.Err != nil {
 		return nil, errors.Trace(ErrFailedDecoder)
@@ -145,6 +146,7 @@ func (d *Decoder) decodeResp() (*Resp, error) {
 	return r, err
 }
 
+// 解析TypeString, TypeError, TypeInt应答
 func (d *Decoder) decodeTextBytes() ([]byte, error) {
 	b, err := d.br.ReadBytes('\n')
 	if err != nil {
@@ -157,6 +159,7 @@ func (d *Decoder) decodeTextBytes() ([]byte, error) {
 	}
 }
 
+// 解析批量回复、多个批量回复数字部分
 func (d *Decoder) decodeInt() (int64, error) {
 	b, err := d.br.ReadSlice('\n')
 	if err != nil {
@@ -169,6 +172,7 @@ func (d *Decoder) decodeInt() (int64, error) {
 	}
 }
 
+// 解析批量回复
 func (d *Decoder) decodeBulkBytes() ([]byte, error) {
 	n, err := d.decodeInt()
 	if err != nil {
@@ -216,6 +220,7 @@ func (d *Decoder) decodeArray() ([]*Resp, error) {
 	return array, nil
 }
 
+// TODO 单个批量请求?
 func (d *Decoder) decodeSingleLineMultiBulk() ([]*Resp, error) {
 	b, err := d.decodeTextBytes()
 	if err != nil {

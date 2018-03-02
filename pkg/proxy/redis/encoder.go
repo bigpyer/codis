@@ -31,6 +31,7 @@ func init() {
 	itoaBuffer = b.String()
 }
 
+// TODO 为什么自己实现?
 func itoa(i int64) string {
 	if i >= minItoa && i <= maxItoa {
 		beg := itoaOffset[i-minItoa]
@@ -64,6 +65,7 @@ func NewEncoderBuffer(bw *bufio2.Writer) *Encoder {
 	return &Encoder{bw: bw}
 }
 
+// 编码应答报文，session调用
 func (e *Encoder) Encode(r *Resp, flush bool) error {
 	if e.Err != nil {
 		return errors.Trace(ErrFailedEncoder)
@@ -76,6 +78,7 @@ func (e *Encoder) Encode(r *Resp, flush bool) error {
 	return e.Err
 }
 
+// 编码请求报文，backend调用
 func (e *Encoder) EncodeMultiBulk(multi []*Resp, flush bool) error {
 	if e.Err != nil {
 		return errors.Trace(ErrFailedEncoder)
