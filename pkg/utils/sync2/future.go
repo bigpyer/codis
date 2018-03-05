@@ -21,6 +21,7 @@ func (f *Future) Add() {
 	f.wait.Add(1)
 }
 
+// done的同时在map中存储数据，并发安全
 func (f *Future) Done(key string, val interface{}) {
 	f.Lock()
 	defer f.Unlock()
@@ -29,6 +30,7 @@ func (f *Future) Done(key string, val interface{}) {
 	f.wait.Done()
 }
 
+// wait结束，返回赋值数据
 func (f *Future) Wait() map[string]interface{} {
 	f.wait.Wait()
 	f.Lock()

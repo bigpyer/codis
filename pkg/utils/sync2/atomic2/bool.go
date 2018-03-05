@@ -3,6 +3,7 @@
 
 package atomic2
 
+// 用数字模拟bool型
 type Bool struct {
 	c Int64
 }
