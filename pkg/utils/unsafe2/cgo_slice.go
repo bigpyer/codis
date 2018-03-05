@@ -22,6 +22,7 @@ type cgoSlice struct {
 	buf []byte
 }
 
+// 分配大小为n的堆buffer，force: 是否强制
 func newCGoSlice(n int, force bool) Slice {
 	after := allocOffheapBytes.Add(int64(n))
 	if !force && after > MaxOffheapBytes() {
@@ -39,6 +40,7 @@ func newCGoSlice(n int, force bool) Slice {
 			Data: uintptr(p), Len: n, Cap: n,
 		})),
 	}
+	// gc检测，如果不使用，最终会释放内存
 	runtime.SetFinalizer(s, (*cgoSlice).reclaim)
 	return s
 }
@@ -47,10 +49,12 @@ func (s *cgoSlice) Type() string {
 	return "cgo_slice"
 }
 
+// 返回当前已分配的buffer
 func (s *cgoSlice) Buffer() []byte {
 	return s.buf
 }
 
+// 销毁buffer
 func (s *cgoSlice) reclaim() {
 	if s.ptr == nil {
 		return

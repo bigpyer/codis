@@ -28,6 +28,8 @@ func SetMaxOffheapBytes(n int64) {
 
 const MinOffheapSlice = 1024 * 16
 
+// 通过cgo分配session、backend连接所用读写buffer
+// 如果小于16KB，在栈上分配内存
 func MakeSlice(n int) Slice {
 	if n >= MinOffheapSlice {
 		if s := newCGoSlice(n, false); s != nil {
@@ -37,6 +39,7 @@ func MakeSlice(n int) Slice {
 	return newGoSlice(n)
 }
 
+// 分配非栈buffer
 func MakeOffheapSlice(n int) Slice {
 	if n >= 0 {
 		return newCGoSlice(n, true)
@@ -44,6 +47,7 @@ func MakeOffheapSlice(n int) Slice {
 	panic("make slice with negative size")
 }
 
+// 主动释放buffer
 func FreeSlice(s Slice) {
 	if s != nil {
 		s.reclaim()

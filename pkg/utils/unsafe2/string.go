@@ -8,6 +8,7 @@ import (
 	"unsafe"
 )
 
+// 字节数组转string
 func CastString(b []byte) string {
 	if len(b) == 0 {
 		return ""

@@ -12,6 +12,7 @@ import (
 func TestCastString(t *testing.T) {
 	var b = []byte("hello")
 	var s = CastString(b)
+	// 证明改变的是同一个byte数组，没有产生新的对象
 	b[0] = 'w'
 	assert.Must(s == "wello")
 }

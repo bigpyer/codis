@@ -12,6 +12,7 @@ import (
 	"unsafe"
 )
 
+// c stand malloc
 func cgo_malloc(n int) unsafe.Pointer {
 	return C.malloc(C.size_t(n))
 }

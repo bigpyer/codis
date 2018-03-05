@@ -11,6 +11,7 @@ import (
 	jemalloc "github.com/spinlock/jemalloc-go"
 )
 
+// jemalloc malloc
 func cgo_malloc(n int) unsafe.Pointer {
 	return jemalloc.Malloc(n)
 }
