@@ -89,6 +89,7 @@ func (b *Reader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+// 读取一个字节
 func (b *Reader) ReadByte() (byte, error) {
 	if b.err != nil {
 		return 0, b.err
@@ -103,6 +104,7 @@ func (b *Reader) ReadByte() (byte, error) {
 	return c, nil
 }
 
+// 读下标不变
 func (b *Reader) PeekByte() (byte, error) {
 	if b.err != nil {
 		return 0, b.err
@@ -116,6 +118,7 @@ func (b *Reader) PeekByte() (byte, error) {
 	return c, nil
 }
 
+// 读取字节数组
 func (b *Reader) ReadSlice(delim byte) ([]byte, error) {
 	if b.err != nil {
 		return nil, b.err
