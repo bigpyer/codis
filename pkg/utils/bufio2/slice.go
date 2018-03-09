@@ -7,6 +7,7 @@ type sliceAlloc struct {
 	buf []byte
 }
 
+// 如果size小于512，复用slice的buf
 func (d *sliceAlloc) Make(n int) (ss []byte) {
 	switch {
 	case n == 0:

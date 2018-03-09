@@ -44,10 +44,12 @@ func NewReaderBuffer(rd io.Reader, buf []byte) *Reader {
 	return &Reader{rd: rd, buf: buf}
 }
 
+// 从rd读取数据并填充到buf的wpos位置之后
 func (b *Reader) fill() error {
 	if b.err != nil {
 		return b.err
 	}
+	// 释放空间
 	if b.rpos > 0 {
 		n := copy(b.buf, b.buf[b.rpos:b.wpos])
 		b.rpos = 0
@@ -64,6 +66,7 @@ func (b *Reader) fill() error {
 	return b.err
 }
 
+// 当前填充数据长度
 func (b *Reader) buffered() int {
 	return b.wpos - b.rpos
 }
@@ -72,18 +75,21 @@ func (b *Reader) Read(p []byte) (int, error) {
 	if b.err != nil || len(p) == 0 {
 		return 0, b.err
 	}
+	// 当前buf没有数据
 	if b.buffered() == 0 {
-		if len(p) >= len(b.buf) {
+		if len(p) >= len(b.buf) { // 超过buf长度，直接读取到p中
 			n, err := b.rd.Read(p)
 			if err != nil {
 				b.err = err
 			}
 			return n, b.err
 		}
+		// 未超过buf长度
 		if b.fill() != nil {
 			return 0, b.err
 		}
 	}
+	// 从buf中读取、copy数据
 	n := copy(p, b.buf[b.rpos:b.wpos])
 	b.rpos += n
 	return n, nil
@@ -94,6 +100,7 @@ func (b *Reader) ReadByte() (byte, error) {
 	if b.err != nil {
 		return 0, b.err
 	}
+	// 当前buf数据为空，读取并填充buf
 	if b.buffered() == 0 {
 		if b.fill() != nil {
 			return 0, b.err
@@ -104,7 +111,7 @@ func (b *Reader) ReadByte() (byte, error) {
 	return c, nil
 }
 
-// 读下标不变
+// 只读取不移除所读取数据
 func (b *Reader) PeekByte() (byte, error) {
 	if b.err != nil {
 		return 0, b.err
@@ -118,23 +125,26 @@ func (b *Reader) PeekByte() (byte, error) {
 	return c, nil
 }
 
-// 读取字节数组
+// 读取delim分割位置之前的字节数组
 func (b *Reader) ReadSlice(delim byte) ([]byte, error) {
 	if b.err != nil {
 		return nil, b.err
 	}
 	for {
 		var index = bytes.IndexByte(b.buf[b.rpos:b.wpos], delim)
+		// 查找到分割位置
 		if index >= 0 {
 			limit := b.rpos + index + 1
 			slice := b.buf[b.rpos:limit]
 			b.rpos = limit
 			return slice, nil
 		}
+		// buf满
 		if b.buffered() == len(b.buf) {
 			b.rpos = b.wpos
 			return b.buf, bufio.ErrBufferFull
 		}
+		// 读取填充
 		if b.fill() != nil {
 			return nil, b.err
 		}
@@ -160,6 +170,7 @@ func (b *Reader) ReadBytes(delim byte) ([]byte, error) {
 		size += len(f)
 	}
 	var n int
+	// 如果size小于512，复用slice的buf
 	var buf = b.slice.Make(size)
 	for _, frag := range full {
 		n += copy(buf[n:], frag)
@@ -184,7 +195,7 @@ type Writer struct {
 	buf []byte
 
 	wr   io.Writer
-	wpos int
+	wpos int // buf[0:wpos]为所存储数据
 }
 
 // 根据默认size分配、构造写缓冲区
@@ -216,9 +227,11 @@ func (b *Writer) flush() error {
 	if b.err != nil {
 		return b.err
 	}
+	// 没有数据可写
 	if b.wpos == 0 {
 		return nil
 	}
+	// 写buf[:b.wpos]
 	n, err := b.wr.Write(b.buf[:b.wpos])
 	if err != nil {
 		b.err = err
@@ -230,16 +243,20 @@ func (b *Writer) flush() error {
 	return b.err
 }
 
+// 可用写buf空间
 func (b *Writer) available() int {
 	return len(b.buf) - b.wpos
 }
 
 func (b *Writer) Write(p []byte) (nn int, err error) {
+	// 要写的p大于buf可用空间
 	for b.err == nil && len(p) > b.available() {
 		var n int
+		// 大于整个buf的空间
 		if b.wpos == 0 {
 			n, b.err = b.wr.Write(p)
 		} else {
+			// 根据可用空间，复制、冲刷数据
 			n = copy(b.buf[b.wpos:], p)
 			b.wpos += n
 			b.flush()
@@ -249,11 +266,13 @@ func (b *Writer) Write(p []byte) (nn int, err error) {
 	if b.err != nil || len(p) == 0 {
 		return nn, b.err
 	}
+	// 把最后剩余数据复制、刷盘
 	n := copy(b.buf[b.wpos:], p)
 	b.wpos += n
 	return nn + n, nil
 }
 
+// 写一个字节、不刷数据
 func (b *Writer) WriteByte(c byte) error {
 	if b.err != nil {
 		return b.err
@@ -267,6 +286,7 @@ func (b *Writer) WriteByte(c byte) error {
 }
 
 func (b *Writer) WriteString(s string) (nn int, err error) {
+	// s长度大于buf可用长度
 	for b.err == nil && len(s) > b.available() {
 		n := copy(b.buf[b.wpos:], s)
 		b.wpos += n
@@ -276,6 +296,7 @@ func (b *Writer) WriteString(s string) (nn int, err error) {
 	if b.err != nil || len(s) == 0 {
 		return nn, b.err
 	}
+	// 复制剩余空间
 	n := copy(b.buf[b.wpos:], s)
 	b.wpos += n
 	return nn + n, nil
