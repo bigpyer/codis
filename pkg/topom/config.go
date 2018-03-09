@@ -56,6 +56,7 @@ sentinel_notification_script = ""
 sentinel_client_reconfig_script = ""
 `
 
+// dashboard配置
 type Config struct {
 	CoordinatorName string `toml:"coordinator_name" json:"coordinator_name"`
 	CoordinatorAddr string `toml:"coordinator_addr" json:"coordinator_addr"`
